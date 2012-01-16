@@ -2,6 +2,8 @@ package org.q2.syndicate;
 
 import org.q2.bluetooth.BtConnection;
 
+import org.q2.util.StateListener;
+
 import javax.bluetooth.*;
 import java.io.IOException;
 
@@ -23,6 +25,8 @@ final class ClientThread extends Thread implements DiscoveryListener {
 
     private volatile ServiceRecord serviceRecord;
 
+    private StateListener listener;
+
     public ClientThread() {
         super(TAG);
         synCore = SyndicateCore.getInstance();
@@ -32,6 +36,7 @@ final class ClientThread extends Thread implements DiscoveryListener {
         uuids = new UUID[1];
         uuids[0] = synCore.SYNDICATE_UUID;
         setDaemon(true);
+	listener = null;
     }
 
     @Override
@@ -70,7 +75,7 @@ final class ClientThread extends Thread implements DiscoveryListener {
             try {
                 found = null;
                 agent.startInquiry(DiscoveryAgent.GIAC, this);
-
+		notifyListener("inquiry", "inquiry started");
                 // wait until
                 synchronized (monitor) {
                     try {
@@ -80,9 +85,13 @@ final class ClientThread extends Thread implements DiscoveryListener {
                     }
                 }
 
+		notifyListener("inquiry", "inquiry done");
+
                 // found a device
                 if (found != null) {
+		    notifyListener("inquiry", "found device: " + found.getBluetoothAddress());
                     serviceRecord = null;
+		    notifyListener("service search", "searching Syndicate service on: " + found.getBluetoothAddress());
                     transactionID = agent.searchServices(null, uuids, found, this);
 
                     synchronized (monitor) {
@@ -93,15 +102,21 @@ final class ClientThread extends Thread implements DiscoveryListener {
                         }
                     }
 
+		    notifyListener("service search", "searching Syndicate service done");
+
                     if (serviceRecord != null) {
                         String connectionURL = serviceRecord.getConnectionURL(ServiceRecord.NOAUTHENTICATE_NOENCRYPT, false);
+			notifyListener("service search", "Syndicate service found: " + connectionURL);
                         if (synCore.getLock().tryLock()) {
                             try {
+				notifyListener("establish connection", "attempting to establish connection..");
                                 BtConnection connection = synCore.openConnection(connectionURL);
                                 Log(TAG, "Waiting....");
+				notifyListener("establish connection", "calling synCore.acceptConnection");
                                 synCore.acceptConnection(connection, false);
                                 Log(TAG, "new connection - " + connection.getRemoteDevice().getBluetoothAddress());
                             } catch (IOException e) {
+				notifyListener("establish connection", "connection failed...");
                                 Log(TAG, e.getMessage());
                             } finally {
                                 synCore.getLock().unlock();
@@ -111,6 +126,7 @@ final class ClientThread extends Thread implements DiscoveryListener {
                 }
             } catch (BluetoothStateException e) {
                 Log(TAG, "failed to start device inquiry - " + e.getMessage());
+		notifyListener("inquiry", "failed to start inquiry.. " + e.getMessage());
             }
             try {
                 Thread.sleep(1000);
@@ -122,5 +138,14 @@ final class ClientThread extends Thread implements DiscoveryListener {
 
     public synchronized void setStop(boolean t) {
         stop = t;
+    }
+
+    public void setListener(StateListener listener) {
+	this.listener = listener;
+    }
+
+    private void notifyListener(String state, String message) {
+	if(listener != null)
+	    listener.onStateChange(state, message);
     }
 }

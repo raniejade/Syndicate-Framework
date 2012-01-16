@@ -5,6 +5,8 @@ import org.q2.bluetooth.BtConnectionNotifier;
 
 import java.io.IOException;
 
+import org.q2.util.StateListener;
+
 import static org.q2.util.DebugLog.Log;
 
 final class ServerThread extends Thread {
@@ -13,11 +15,14 @@ final class ServerThread extends Thread {
     private BtConnectionNotifier service;
     private volatile boolean stop;
 
+    private StateListener listener;
+
     public ServerThread() {
         super(TAG);
         setDaemon(true);
         synCore = SyndicateCore.getInstance();
         stop = false;
+	listener = null;
     }
 
     public void run() {
@@ -31,12 +36,14 @@ final class ServerThread extends Thread {
 
         while (!stop) {
             try {
+		notifyListener("Listening", "waiting for new connections..");
                 BtConnection connection = service.acceptAndOpen();
                 Log(TAG, "Waiting....");
+		notifyListener("new connection", "received new connection");
                 synCore.getLock().lock();
                 try {
                     synCore.acceptConnection(connection, true);
-                    synCore.setMaster(true);
+		    // synCore.setMaster(true);
                 } finally {
                     synCore.getLock().unlock();
                 }
@@ -62,5 +69,14 @@ final class ServerThread extends Thread {
         } catch (IOException e) {
             Log(TAG, e.getMessage());
         }
+    }
+
+    public void setListener(StateListener listener) {
+	this.listener = listener;
+    }
+
+    private void notifyListener(String state, String message) {
+	if(listener != null)
+	    listener.onStateChange(state, message);
     }
 }

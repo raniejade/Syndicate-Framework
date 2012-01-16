@@ -4,6 +4,7 @@ import org.q2.bluetooth.BtConnection;
 import org.q2.bluetooth.BtConnectionNotifier;
 import org.q2.bluetooth.BtConnector;
 import org.q2.util.DebugLog;
+import org.q2.util.StateListener;
 
 import javax.bluetooth.BluetoothStateException;
 import javax.bluetooth.LocalDevice;
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.q2.syndicate.SyndicateProperties.*;
 import static org.q2.util.DebugLog.Log;
 import static org.q2.util.MD5.md5;
+
 
 final class SyndicateCore {
     private static SyndicateCore ourInstance;
@@ -62,6 +64,10 @@ final class SyndicateCore {
 
     private final ConcurrentHashMap<String, String> history;
 
+    private StateListener listener;
+
+    private volatile boolean networkChanged;
+
     private SyndicateCore() throws BluetoothStateException {
         // initialize properties
         initProperties();
@@ -78,6 +84,8 @@ final class SyndicateCore {
         master = false;
         in = new ConcurrentLinkedQueue<Packet>();
 	history = new ConcurrentHashMap<String, String>();
+	listener = null;
+	networkChanged = false;
     }
 
     public synchronized void setMaster(boolean t) {
@@ -137,14 +145,17 @@ final class SyndicateCore {
 
 
     public void acceptConnection(BtConnection connection, boolean server) {
+	notifyListener("acceptConnection", "new connection");
         mutex.writeLock().lock();
         try {
             if (!hasConnection(connection.getRemoteDevice().getBluetoothAddress()) && connections.size() < 2) {
                 ConnectionHandler handler = new ConnectionHandler(connection);
                 connections.put(handler.getBtAddress(), handler);
+		notifyListener("acceptConnection", "connection accepted. Starting handler...");
                 handler.start();
                 routingTable.add(localDevice.getBluetoothAddress(), handler.getBtAddress());
             } else {
+		notifyListener("acceptConnection", "connection rejected.. reasons: link count exceeded or already visible to this network");
                 connection.close();
             }
         } catch (IOException e) {
@@ -222,6 +233,7 @@ final class SyndicateCore {
         mutex.writeLock().lock();
         try {
             if (connections.containsKey(address)) {
+		notifyListener("removeConnection", "removing connection: " + address);
                 ConnectionHandler handler = connections.get(address);
                 connections.remove(address);
                 routingTable.remove(localDevice.getBluetoothAddress(), address);
@@ -234,12 +246,16 @@ final class SyndicateCore {
 
     public void handlePacket(byte[] p, String from) {
         Packet s = Packet.createPacket(p);
+	notifyListener("handlePacket", "packet received from: " + from);
         s.decreaseHopCount();
         if (s.getHopCount() > 0) {
+	    notifyListener("handlePacket", "hop count is still valid... processing");
             Log("SynCore", s.getSource() + " " + s.getDestination());
             if (s.getType() == Packet.DATA_PACKET) {
+		notifyListener("handlePacket", "packet is [DATA]");
                 handleDataPacket(s);
             } else {
+		notifyListener("handlePacket", "packet is [UPDATE]");
                 handleUpdatePacket(s, from);
             }
         }
@@ -256,10 +272,13 @@ final class SyndicateCore {
 	String hash = md5(p.getPayload());
 	if(history.containsKey(p.getSource())) {
 	    String old = history.get(p.getSource());
-	    if(old.equals(hash))
+	    if(old.equals(hash)) {
+		notifyListener("handleUpdatePacket", "packet is redundant... found match: " + hash);
 		return;
+	    }
 	}
 
+	notifyListener("handleUpdatePacket", "updating routing table...");
         ByteBuffer buffer = ByteBuffer.allocate(p.getPayload().length);
         buffer.put(p.getPayload());
         routingTable.remove(p.getSource());
@@ -275,21 +294,27 @@ final class SyndicateCore {
                 connections.get(address).offer(p);
             }
         }
+
+	notifyListener("handlerUpdatePacket", "keeping track of update packet");
 	history.put(p.getSource(), hash);
+	networkChanged = true;
     }
 
     public void handleDataPacket(Packet p) {
         // this packet is for this device
         if (p.getDestination().equals(localDevice.getBluetoothAddress())) {
+	    notifyListener("handleDataPacket", "packet received for this device...");
             offer(p);
         } else {
+	    notifyListener("handleDataPacket", "routing packet");
             String nextHop = routingTable.nextHop(localDevice.getBluetoothAddress(), p.getDestination());
-
             if (nextHop != null) {
                 Log("SynCore", "Packet from: " + p.getSource() + " routed to: " + nextHop);
+		notifyListener("handleDataPacket", "Packet from: " + p.getSource() + " routed to: " + nextHop);
                 for (String n : connections.keySet()) {
                     if (n.equals(nextHop)) {
                         connections.get(n).offer(p);
+			break;
                     }
                 }
             }
@@ -322,7 +347,7 @@ final class SyndicateCore {
     }
 
     public synchronized Packet poll() {
-        return in.poll();
+	return in.poll();
     }
 
     public boolean send(String destination, byte[] data) {
@@ -341,5 +366,38 @@ final class SyndicateCore {
             mutex.writeLock().unlock();
         }
         return false;
+    }
+
+    public void setClientThreadListener(StateListener listener) {
+	clientThread.setListener(listener);
+    }
+
+    public void setServerThreadListener(StateListener listener) {
+	serverThread.setListener(listener);
+    }
+
+    public void setConnectionHandlerListener(String name, StateListener listener) {
+	for(String n : connections.keySet())
+	    if(name.equals(n)) {
+		connections.get(n).setListener(listener);
+		break;
+	    }
+    }
+
+    public void setListener(StateListener listener) {
+	this.listener = listener;
+    }
+
+    private void notifyListener(String state, String message) {
+	if(listener != null)
+	    listener.onStateChange(state, message);
+    }
+
+    public synchronized boolean hasChanged() {
+	if(networkChanged) {
+	    networkChanged = false;
+	    return true;
+	}
+	return false;
     }
 }

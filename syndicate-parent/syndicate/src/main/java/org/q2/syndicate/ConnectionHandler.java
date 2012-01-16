@@ -1,6 +1,7 @@
 package org.q2.syndicate;
 
 import org.q2.bluetooth.BtConnection;
+import org.q2.util.StateListener;
 
 import javax.bluetooth.RemoteDevice;
 import java.io.IOException;
@@ -17,15 +18,17 @@ final class ConnectionHandler extends Thread {
 
     private final ConcurrentLinkedQueue<Packet> queue;
 
+    private StateListener listener;
+
     public ConnectionHandler(BtConnection connection) throws IOException {
         device = connection.getRemoteDevice();
         this.connection = connection;
         stop = false;
         tag = "Thread: [" + device.getBluetoothAddress() + "]";
-        ;
         setName(tag);
         synCore = SyndicateCore.getInstance();
         queue = new ConcurrentLinkedQueue<Packet>();
+	listener = null;
     }
 
     public synchronized void offer(Packet p) {
@@ -40,6 +43,7 @@ final class ConnectionHandler extends Thread {
             synCore.getLock().lock();
             try {
                 device.getFriendlyName(true);
+		notifyListener("verify", "contacting remote device");
             } catch (IOException e) {
                 Log(tag, e.getMessage());
                 synCore.removeConnection(device.getBluetoothAddress());
@@ -55,6 +59,7 @@ final class ConnectionHandler extends Thread {
             if (connected) {
 
                 if (System.currentTimeMillis() - sendUpdate > 6000) {
+		    notifyListener("send update","sending update packet");
                     synCore.getLock().lock();
                     try {
                         sendUpdatePacket();
@@ -71,8 +76,9 @@ final class ConnectionHandler extends Thread {
                 synCore.getLock().lock();
                 try {
                     byte[] rec = connection.receive();
-
+		    notifyListener("receiving data", "attempting to receive data");
                     if (rec != null) {
+			notifyListener("data received", "calling synCore.handlePacket");
                         synCore.handlePacket(rec, device.getBluetoothAddress());
                     }
                 } catch (IOException e) {
@@ -86,6 +92,7 @@ final class ConnectionHandler extends Thread {
                 try {
                     if (!queue.isEmpty()) {
                         Packet p = queue.poll();
+			notifyListener("sending data", "destination: " + p.getDestination() + " from: " + p.getSource());
                         connection.send(p.toBytes());
                     }
                 } catch (IOException e) {
@@ -125,5 +132,14 @@ final class ConnectionHandler extends Thread {
 
     public boolean equals(Object o) {
         return hashCode() == o.hashCode();
+    }
+
+    public void setListener(StateListener listener) {
+	this.listener = listener;
+    }
+
+    public void notifyListener(String state, String message) {
+	if(listener != null)
+	    listener.onStateChange(state, message);
     }
 }
