@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.q2.syndicate.SyndicateProperties.*;
 import static org.q2.util.DebugLog.Log;
-import static org.q2.util.MD5.md5;
+//import static org.q2.util.MD5.md5;
 
 
 final class SyndicateCore {
@@ -62,7 +62,7 @@ final class SyndicateCore {
 
     private final ConcurrentLinkedQueue<Packet> in;
 
-    private final ConcurrentHashMap<String, String> history;
+    //private final ConcurrentHashMap<String, String> history;
 
     private StateListener listener;
 
@@ -83,7 +83,7 @@ final class SyndicateCore {
         lock = new ReentrantLock();
         master = false;
         in = new ConcurrentLinkedQueue<Packet>();
-	history = new ConcurrentHashMap<String, String>();
+	//history = new ConcurrentHashMap<String, String>();
 	listener = null;
 	networkChanged = false;
     }
@@ -269,14 +269,14 @@ final class SyndicateCore {
 	// get the md5 of the payload of the packet and store it
 	// if the previous md5 is the same with the new one
 	// then this packet is redundant
-	String hash = md5(p.getPayload());
+	/*String hash = md5(p.getPayload());
 	if(history.containsKey(p.getSource())) {
 	    String old = history.get(p.getSource());
 	    if(old.equals(hash)) {
 		notifyListener("handleUpdatePacket", "packet is redundant... found match: " + hash);
 		return;
 	    }
-	}
+	}*/
 
 	notifyListener("handleUpdatePacket", "updating routing table...");
         ByteBuffer buffer = ByteBuffer.allocate(p.getPayload().length);
@@ -296,7 +296,7 @@ final class SyndicateCore {
         }
 
 	notifyListener("handlerUpdatePacket", "keeping track of update packet");
-	history.put(p.getSource(), hash);
+	//history.put(p.getSource(), hash);
 	networkChanged = true;
     }
 
