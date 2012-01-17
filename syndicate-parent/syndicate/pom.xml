@@ -4,6 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+  <name>syndicate</name>
+
   <groupId>org.q2.syndicate</groupId>
   <artifactId>syndicate</artifactId>
   <version>1.0</version>
@@ -34,6 +36,13 @@
       <groupId>net.sf.bluecove</groupId>
       <artifactId>bluecove-emu</artifactId>
       <version>2.1.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
 

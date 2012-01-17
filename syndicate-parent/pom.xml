@@ -13,8 +13,11 @@
   communicate
   </description>
 
+  <name>syndicate-parent</name>
+
   <modules>
     <module>syndicate</module>
+    <module>qtransfer</module>
   </modules>
 
   <properties>
@@ -39,6 +42,5 @@
       </plugin>
     </plugins>
   </reporting>
-
 
 </project>

@@ -64,7 +64,7 @@ final class RoutingTable {
             }
 
             for (String n : table.get(row)) {
-                if (nextHop(n, name) != null)
+                if (n.equals(name) || nextHop(n, name) != null)
                     return n;
             }
         }
