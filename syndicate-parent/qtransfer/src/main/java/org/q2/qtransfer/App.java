@@ -9,7 +9,8 @@ public class App {
     public static void main( String[] args ) {
 	SwingUtilities.invokeLater(new Runnable() {
 		public void run() {
-		    createAndShowGUI();
+		    QTransferGUI gui = new QTransferGUI();
+		    gui.setVisible(true);
 		}
 	});
     }
