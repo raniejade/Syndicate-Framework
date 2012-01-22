@@ -27,7 +27,9 @@ final class BtL2CAPConnection implements BtConnection {
     public byte[] receive() throws IOException {
         if (connection.ready()) {
             byte[] rec = new byte[connection.getReceiveMTU()];
-            connection.receive(rec);
+            int size = connection.receive(rec);
+	    byte[] ret = new byte[size];
+	    System.arraycopy(rec, 0, ret, 0, size);
             return rec;
         }
         return null;

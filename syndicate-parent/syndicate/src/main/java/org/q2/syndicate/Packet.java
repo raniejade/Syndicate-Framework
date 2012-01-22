@@ -12,7 +12,11 @@ final class Packet {
     private final byte[] payload;
     private byte hopCount;
 
+    private int payloadSize;
+
     public static Packet createPacket(byte[] data) {
+
+	//System.out.println("createPacket: " + data.length);
         ByteBuffer buffer = ByteBuffer.wrap(data);
 
         Byte type = buffer.get();
@@ -27,7 +31,10 @@ final class Packet {
 
         Byte hopCount = buffer.get();
 
-        byte[] payload = new byte[buffer.remaining()];
+	int payloadSize = buffer.getInt();
+
+        byte[] payload = new byte[(int)payloadSize];
+	//System.out.println("payload: " + payloadSize);
         buffer.get(payload);
 
         return new Packet(type, source, destination, payload, hopCount);
@@ -39,6 +46,7 @@ final class Packet {
         this.destination = destination;
         hopCount = 8;
         this.payload = new byte[payload.length];
+	this.payloadSize = payload.length;
         System.arraycopy(payload, 0, this.payload, 0, payload.length);
     }
 
@@ -48,6 +56,7 @@ final class Packet {
         this.destination = destination;
         this.hopCount = hopCount;
         this.payload = new byte[payload.length];
+	this.payloadSize = payload.length;
         System.arraycopy(payload, 0, this.payload, 0, payload.length);
     }
 
@@ -68,11 +77,12 @@ final class Packet {
     }
 
     public byte[] toBytes() {
-        ByteBuffer buffer = ByteBuffer.allocate(26 + payload.length);
+        ByteBuffer buffer = ByteBuffer.allocate(30 + payloadSize);
         buffer.put(type);
         buffer.put(source.getBytes());
         buffer.put(destination.getBytes());
         buffer.put(hopCount);
+	buffer.putInt(payloadSize);
         buffer.put(payload);
         return buffer.array();
     }

@@ -92,6 +92,7 @@ final class ConnectionHandler extends Thread {
                 try {
                     if (!queue.isEmpty()) {
                         Packet p = queue.poll();
+			//System.out.println("DAMN 2: " + p.getPayload().length);
 			notifyListener("sending data", "destination: " + p.getDestination() + " from: " + p.getSource());
                         connection.send(p.toBytes());
                     }
@@ -121,7 +122,7 @@ final class ConnectionHandler extends Thread {
     }
 
     public void sendUpdatePacket() throws IOException {
-        Packet p = synCore.requestUpdatePacket();
+        Packet p = synCore.requestUpdatePacket(getBtAddress());
         connection.send(p.toBytes());
         Log(tag, "Update packet sent");
     }

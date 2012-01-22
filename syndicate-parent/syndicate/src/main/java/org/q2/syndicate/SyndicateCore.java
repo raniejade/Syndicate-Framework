@@ -5,23 +5,20 @@ import org.q2.bluetooth.BtConnectionNotifier;
 import org.q2.bluetooth.BtConnector;
 import org.q2.util.DebugLog;
 import org.q2.util.StateListener;
+import org.q2.rip.*;
 
 import javax.bluetooth.BluetoothStateException;
 import javax.bluetooth.LocalDevice;
 import javax.bluetooth.UUID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.*;
 
 import static org.q2.syndicate.SyndicateProperties.*;
 import static org.q2.util.DebugLog.Log;
-//import static org.q2.util.MD5.md5;
+import static org.q2.util.MD5.md5;
 
 
 final class SyndicateCore {
@@ -56,13 +53,17 @@ final class SyndicateCore {
 
     private final RoutingTable routingTable;
 
+    private final org.q2.rip.RoutingTable routes;
+
     private final ReentrantLock lock;
 
     private volatile boolean master;
 
     private final ConcurrentLinkedQueue<Packet> in;
 
-    //private final ConcurrentHashMap<String, String> history;
+    private final ConcurrentHashMap<String, String> history;
+
+    private final ConcurrentHashMap<String, String> sent;
 
     private StateListener listener;
 
@@ -83,9 +84,12 @@ final class SyndicateCore {
         lock = new ReentrantLock();
         master = false;
         in = new ConcurrentLinkedQueue<Packet>();
-	//history = new ConcurrentHashMap<String, String>();
+	history = new ConcurrentHashMap<String, String>();
+	sent = new ConcurrentHashMap<String, String>();
 	listener = null;
 	networkChanged = false;
+
+	routes = new org.q2.rip.RoutingTable();
     }
 
     public synchronized void setMaster(boolean t) {
@@ -153,7 +157,8 @@ final class SyndicateCore {
                 connections.put(handler.getBtAddress(), handler);
 		notifyListener("acceptConnection", "connection accepted. Starting handler...");
                 handler.start();
-                routingTable.add(localDevice.getBluetoothAddress(), handler.getBtAddress());
+                //routingTable.add(localDevice.getBluetoothAddress(), handler.getBtAddress());
+		routes.updateEntry(new RoutingTableEntry(handler.getBtAddress(), 1, handler.getBtAddress()));
             } else {
 		notifyListener("acceptConnection", "connection rejected.. reasons: link count exceeded or already visible to this network");
                 connection.close();
@@ -169,7 +174,8 @@ final class SyndicateCore {
         mutex.readLock().lock();
         try {
             // check also visibility graph
-            return routingTable.search(localDevice.getBluetoothAddress(), address);
+	    //routingTable.doSomethingImportant();
+            return routes.contains(address);
         } finally {
             mutex.readLock().unlock();
         }
@@ -191,13 +197,34 @@ final class SyndicateCore {
         return localDevice;
     }
 
+    public Packet requestUpdatePacket(String destination) {
+	mutex.readLock().lock();
+	try {
+	    Vector<org.q2.rip.RoutingTable.DestinationAdvertisement> entries = routes.getAdvertisement(destination);
+	    ByteBuffer buffer = ByteBuffer.allocate(16 * entries.size() + 4);
+	    buffer.putInt(entries.size());
+	    for(org.q2.rip.RoutingTable.DestinationAdvertisement entry : entries) {
+		buffer.put(entry.destination.getBytes());
+		buffer.putInt(entry.hops);
+	    }
+
+	    return new Packet(Packet.UPDATE_PACKET, localDevice.getBluetoothAddress(), 
+			      "UPDATEPACKET", buffer.array());
+	} finally {
+	    mutex.readLock().unlock();
+	}
+    }
+
     public Packet requestUpdatePacket() {
         mutex.readLock().lock();
         try {
             Set<String> n = connections.keySet();
-            ByteBuffer buf = ByteBuffer.allocate(n.size() * 12);
+            ByteBuffer buf = ByteBuffer.allocate(4 + (n.size() * 12));
+	    buf.putInt(n.size());
+	    //System.out.println("number of connections: " + n.size());
             for (String i : n) {
                 buf.put(i.getBytes());
+		//System.out.println("adding: " + i);
             }
 
             return new Packet(Packet.UPDATE_PACKET, localDevice.getBluetoothAddress(),
@@ -236,7 +263,8 @@ final class SyndicateCore {
 		notifyListener("removeConnection", "removing connection: " + address);
                 ConnectionHandler handler = connections.get(address);
                 connections.remove(address);
-                routingTable.remove(localDevice.getBluetoothAddress(), address);
+                //routingTable.remove(localDevice.getBluetoothAddress(), address);
+		routes.removeEntries(address);
                 handler.setStop(true);
             }
         } finally {
@@ -254,63 +282,110 @@ final class SyndicateCore {
             if (s.getType() == Packet.DATA_PACKET) {
 		notifyListener("handlePacket", "packet is [DATA]");
                 handleDataPacket(s);
-            } else {
+            } else if(s.getType() == Packet.UPDATE_PACKET) {
 		notifyListener("handlePacket", "packet is [UPDATE]");
-                handleUpdatePacket(s, from);
+                handleUpdatePacket(s, from, true /* or false it does not matter */);
             }
         }
     }
 
-    public void handleUpdatePacket(Packet p, String from) {
-        // dont update packets that came from this device
-        if (p.getSource().equals(localDevice.getBluetoothAddress()))
-            return;
-	
-	// get the md5 of the payload of the packet and store it
-	// if the previous md5 is the same with the new one
-	// then this packet is redundant
-	/*String hash = md5(p.getPayload());
-	if(history.containsKey(p.getSource())) {
-	    String old = history.get(p.getSource());
-	    if(old.equals(hash)) {
-		notifyListener("handleUpdatePacket", "packet is redundant... found match: " + hash);
-		return;
+    public void handleUpdatePacket(Packet p, String from, boolean t) {
+	mutex.writeLock().lock();
+	try {
+	    ByteBuffer buffer = ByteBuffer.wrap(p.getPayload());
+	    int limit = buffer.getInt();
+	    int i = 0;
+	    byte[] tmp = new byte[12];
+	    while(i < limit) {
+		// destination
+		buffer.get(tmp);
+		String destination = new String(tmp);
+		int hops = buffer.getInt();
+		routes.updateEntry(new RoutingTableEntry(destination, hops, from));
+		i++;
 	    }
-	}*/
+	} finally {
+	    mutex.writeLock().unlock();
+	}
+    }
 
-	notifyListener("handleUpdatePacket", "updating routing table...");
-        ByteBuffer buffer = ByteBuffer.allocate(p.getPayload().length);
-        buffer.put(p.getPayload());
-        routingTable.remove(p.getSource());
-        routingTable.add(p.getSource());
-        byte[] tmp = new byte[12];
-        while (buffer.hasRemaining()) {
-            buffer.get(tmp, 0, 12);
-            routingTable.add(p.getSource(), new String(tmp));
-        }
+    public void handleUpdatePacket(Packet p, String from) {
+	mutex.writeLock().lock();
+	try {
+	    // dont update packets that came from this device
+	    if (p.getSource().equals(localDevice.getBluetoothAddress()))
+		return;
+	
+	    // get the md5 of the payload of the packet and store it
+	    // if the previous md5 is the same with the new one
+	    // then this packet is redundant
+	    String hash = md5(p.getPayload());
+	    if(history.containsKey(p.getSource())) {
+		String old = history.get(p.getSource());
+		if(old.equals(hash)) {
+		    notifyListener("handleUpdatePacket", "packet is redundant... found match: " + hash);
+		    for(String s : connections.keySet()) {
+			if(!sent.containsKey(s) || !sent.get(s).equals(hash)) {
+			    if (!s.equals(from)) {
+				connections.get(s).offer(p);
+				sent.put(s, hash);
+			    }
+			}
+			return;
+		    }
+		}
+	    }
 
-        for (String address : connections.keySet()) {
-            if (!address.equals(from)) {
-                connections.get(address).offer(p);
-            }
-        }
+	    notifyListener("handleUpdatePacket", "updating routing table...");
+	    ByteBuffer buffer = ByteBuffer.wrap(p.getPayload());
+	    //System.out.println(p.getPayload().length);
+	    //buffer.put(p.getPayload());
+	    routingTable.doSomethingImportant();
+	    routingTable.remove(p.getSource());
+	    routingTable.add(p.getSource());
+	    byte[] tmp = new byte[12];
+	    int limit = buffer.getInt();
+	    //System.out.println("from: " + p.getSource() + " limit: " + limit);
+	    int i = 0;
+	    while (i < limit) {
+		buffer.get(tmp, 0, 12);
+		String tps = new String(tmp);
+		if(!tps.equals(localDevice.getBluetoothAddress())) {
+		    System.out.println("new device in the network: " + tps);
+		    routingTable.add(p.getSource(), tps);
+		}
+		i++;
+	    }
 
-	notifyListener("handlerUpdatePacket", "keeping track of update packet");
-	//history.put(p.getSource(), hash);
-	networkChanged = true;
+	    for (String address : connections.keySet()) {
+		if (!address.equals(from)) {
+		    connections.get(address).offer(p);
+		}
+	    }
+
+	    notifyListener("handlerUpdatePacket", "keeping track of update packet");
+	    //history.put(p.getSource(), hash);
+	    networkChanged = true;
+	} finally {
+	    mutex.writeLock().unlock();
+	}
     }
 
     public void handleDataPacket(Packet p) {
         // this packet is for this device
         if (p.getDestination().equals(localDevice.getBluetoothAddress())) {
 	    notifyListener("handleDataPacket", "packet received for this device...");
+	    //System.out.println(p.getSource() + " " + p.getPayload().length);
             offer(p);
         } else {
 	    notifyListener("handleDataPacket", "routing packet");
-            String nextHop = routingTable.nextHop(localDevice.getBluetoothAddress(), p.getDestination());
+	    System.out.println("routing packet from: " + p.getSource() + " destination: " + p.getDestination());
+            //String nextHop = routingTable.nextHop(localDevice.getBluetoothAddress(), p.getDestination());
+	    String nextHop = routes.nextHop(p.getDestination());
             if (nextHop != null) {
                 Log("SynCore", "Packet from: " + p.getSource() + " routed to: " + nextHop);
 		notifyListener("handleDataPacket", "Packet from: " + p.getSource() + " routed to: " + nextHop);
+		System.out.println("Packet from: " + p.getSource() + " routed to: " + nextHop);
                 for (String n : connections.keySet()) {
                     if (n.equals(nextHop)) {
                         connections.get(n).offer(p);
@@ -324,7 +399,11 @@ final class SyndicateCore {
     public Set<String> getConnections() {
         mutex.readLock().lock();
         try {
-            return routingTable.devices(localDevice.getBluetoothAddress());
+	    routingTable.doSomethingImportant();
+	    //System.out.println(routingTable.devices(localDevice.getBluetoothAddress()));
+	    Set<String> res = routes.getConnections();
+	    //System.out.println("connections: " + res);
+            return res;
         } finally {
             mutex.readLock().unlock();
         }
@@ -353,10 +432,13 @@ final class SyndicateCore {
     public boolean send(String destination, byte[] data) {
         mutex.writeLock().lock();
         try {
-            String nextHop = routingTable.nextHop(localDevice.getBluetoothAddress(), destination);
+	    routingTable.doSomethingImportant();
+            //String nextHop = routingTable.nextHop(localDevice.getBluetoothAddress(), destination);
+	    String nextHop = routes.nextHop(destination);
             if (nextHop != null) {
                 Packet p = new Packet(Packet.DATA_PACKET, localDevice.getBluetoothAddress(), destination, data);
                 ConnectionHandler handler = connections.get(nextHop);
+		//System.out.println("DAMN: " + data.length);
                 if (handler != null) {
                     handler.offer(p);
                     return true;
