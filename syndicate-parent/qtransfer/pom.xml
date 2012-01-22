@@ -46,7 +46,7 @@
 	 <configuration>
 	<archive>
 	  <manifest>
-	    <mainClass>org.q2.qtransfer.App</mainClass>
+	    <mainClass>org.q2.qtransfer.QTransferGUI</mainClass>
 	  </manifest>
 	</archive>
       </configuration>

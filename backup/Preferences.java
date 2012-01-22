@@ -7,16 +7,16 @@ import java.awt.event.*;
 
 class Preferences extends JDialog {
     private boolean edited;
-    private final QTransferGUI settings;
+    private final SettingsManager settings;
     private JTextField textField;
     private JSpinner spinner;
     private JSpinner spinner2;
 
-    public Preferences(QTransferGUI parent) {
+    public Preferences(JFrame parent, SettingsManager settings) {
 	super(parent, true);
 	setTitle("Settings");
 	edited = false;
-	this.settings = parent;
+	this.settings = settings;
 	initGUI();
 	setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
     }
