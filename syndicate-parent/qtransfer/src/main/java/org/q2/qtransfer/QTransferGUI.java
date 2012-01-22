@@ -10,6 +10,7 @@ import java.awt.event.*;
 
 import java.io.*;
 import java.util.*;
+import java.nio.*;
 
 public class QTransferGUI extends JFrame {
     private final JList list;
@@ -44,6 +45,7 @@ public class QTransferGUI extends JFrame {
 	setVisible(true);
 	// load configuration
 	loadConfigs();
+	setResizable(false);
     }
 
     private void initGUI() {
@@ -95,7 +97,40 @@ public class QTransferGUI extends JFrame {
 			    System.out.println("Size: " + size);
 			    System.out.println("# of Segments: " + segmentCount);
 
-			// close stream
+			    Segment[] segments = new Segment[segmentCount];
+			    int i = 0;
+			    int segmentSize = getSegmentSize();
+
+			    int ssize = size;
+
+			    while(i < segmentCount) {
+				if(size > segmentSize) {
+				    byte[] tmp = new byte[segmentSize];
+				    is.read(tmp);
+				    segments[i] = new Segment(tmp);
+				    size -= segmentSize;
+				} else if (size > 0) {
+				    // what is left
+				    byte[] tmp = new byte[size];
+				    is.read(tmp);
+				    segments[i] = new Segment(tmp);
+				    size = 0;
+				}
+				//System.out.println("size: " + size);
+				i++;
+			    }
+
+			    System.out.println("Segments created, preparing to transfer");
+			    ByteBuffer buffer = ByteBuffer.allocate(9 + name.getBytes().length);
+			    buffer.put(MessageDispatcher.TRANSFER_REQUEST);
+			    buffer.putInt(size);
+			    buffer.putInt(segmentCount);
+			    buffer.put(name.getBytes());
+			    
+			    TransferDialog td = new TransferDialog(QTransferGUI.this, buffer.array(), name, ssize, segmentCount, segments);
+			    td.show();
+
+			    // close stream
 			    is.close();
 			} catch (FileNotFoundException et) {
 			    et.printStackTrace(); 

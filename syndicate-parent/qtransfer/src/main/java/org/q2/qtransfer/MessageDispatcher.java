@@ -5,6 +5,8 @@ import org.q2.syndicate.*;
 import java.nio.*;
 import java.util.*;
 
+import javax.swing.*;
+
 class MessageDispatcher extends Thread {
     public class Identity {
 	public final String name;
@@ -16,12 +18,14 @@ class MessageDispatcher extends Thread {
 	}
     }
 
-    public final byte IDENTITY_REQUEST = 0x0;
-    public final byte IDENTITY_REPLY = 0x1;
+    public static final byte IDENTITY_REQUEST = 0x0;
+    public static final byte IDENTITY_REPLY = 0x1;
+    public static final byte TRANSFER_REQUEST = 0x2;
 
     private final QTransferGUI handle;
 
     private volatile boolean requestIdentity;
+    private volatile boolean acceptRequest;
     private final Vector<Identity> identities;
 
     public MessageDispatcher(QTransferGUI handle) {
@@ -29,6 +33,7 @@ class MessageDispatcher extends Thread {
 	setDaemon(true);
 	this.handle = handle;
 	requestIdentity = false;
+	acceptRequest = true;
 	identities = new Vector<Identity>();
     }
 
@@ -50,6 +55,10 @@ class MessageDispatcher extends Thread {
 	}
     }
 
+    public void setAcceptRequest(boolean t) {
+	acceptRequest = t;
+    }
+
     public Vector<Identity> stopRequestIdentity() {
 	requestIdentity = false;
 	return identities;
@@ -60,7 +69,9 @@ class MessageDispatcher extends Thread {
 	while(true) {
 	    SCC.Data rec = scc.receive();
 
-	    if(rec == null)
+	    // if no data is received
+	    // or acceptRequest is false
+	    if(rec == null || !acceptRequest)
 		continue;
 
 	    if(rec.data[0] == IDENTITY_REQUEST) {
@@ -84,6 +95,8 @@ class MessageDispatcher extends Thread {
 		    identities.add(new Identity(name, rec.source));
 		    System.out.println("received identity reply from: " + name + "(" + rec.source + ")");
 		}
+	    } else if(rec.data[0] == TRANSFER_REQUEST) {
+		
 	    }
 	}
     }
