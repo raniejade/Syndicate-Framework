@@ -21,6 +21,11 @@ class MessageDispatcher extends Thread {
     public static final byte IDENTITY_REQUEST = 0x0;
     public static final byte IDENTITY_REPLY = 0x1;
     public static final byte TRANSFER_REQUEST = 0x2;
+    public static final byte TRANSFER_ACK = 0x3;
+    public static final byte TRANSFER_NACK = 0x4;
+
+    public static final byte TRANSFER_SEGMENT = 0x5;
+    public static final byte TRANSFER_SEGMENT_REPLY = 0x6;
 
     private final QTransferGUI handle;
 
@@ -67,11 +72,13 @@ class MessageDispatcher extends Thread {
     public void run() {
 	SCC scc = SCC.getInstance();
 	while(true) {
-	    SCC.Data rec = scc.receive();
+	    if(!acceptRequest)
+		continue;
+	    final SCC.Data rec = scc.receive();
 
 	    // if no data is received
 	    // or acceptRequest is false
-	    if(rec == null || !acceptRequest)
+	    if(rec == null)
 		continue;
 
 	    if(rec.data[0] == IDENTITY_REQUEST) {
@@ -96,7 +103,11 @@ class MessageDispatcher extends Thread {
 		    System.out.println("received identity reply from: " + name + "(" + rec.source + ")");
 		}
 	    } else if(rec.data[0] == TRANSFER_REQUEST) {
-		
+		SwingUtilities.invokeLater(new Runnable() {
+			public void run() {
+			    handle.onTransferRequest(rec);
+			}
+		    });
 	    }
 	}
     }

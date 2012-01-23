@@ -12,6 +12,8 @@ import java.io.*;
 import java.util.*;
 import java.nio.*;
 
+import org.q2.syndicate.*;
+
 public class QTransferGUI extends JFrame {
     private final JList list;
     private String name;
@@ -123,12 +125,21 @@ public class QTransferGUI extends JFrame {
 			    System.out.println("Segments created, preparing to transfer");
 			    ByteBuffer buffer = ByteBuffer.allocate(9 + name.getBytes().length);
 			    buffer.put(MessageDispatcher.TRANSFER_REQUEST);
-			    buffer.putInt(size);
+			    buffer.putInt(ssize);
 			    buffer.putInt(segmentCount);
 			    buffer.put(name.getBytes());
+
+			    int idx = list.getSelectedIndex();
+
+			    // dont accept any request
+			    dispatcher.setAcceptRequest(false);
+
+			    MessageDispatcher.Identity id = identities.get(idx);
 			    
-			    TransferDialog td = new TransferDialog(QTransferGUI.this, buffer.array(), name, ssize, segmentCount, segments);
+			    TransferDialog td = new TransferDialog(QTransferGUI.this, buffer.array(), name, ssize, segmentCount, segments, id.address);
 			    td.show();
+
+			    dispatcher.setAcceptRequest(true);
 
 			    // close stream
 			    is.close();
@@ -169,7 +180,7 @@ public class QTransferGUI extends JFrame {
 	} catch (FileNotFoundException e) {
 	    setName("QTransfer");
 	    setSegmentSize(256);
-	    setTimeout(10000);
+	    setTimeout(30000);
 	}
     }
 
@@ -296,7 +307,7 @@ public class QTransferGUI extends JFrame {
     private class WaitingThread extends SwingWorker<Void, Void> {
 	public Void doInBackground() {
 	    long current = System.currentTimeMillis();
-	    while(System.currentTimeMillis() - current < getTimeout()) {
+	    while(System.currentTimeMillis() - current < 10000) {
 		//System.out.println((System.currentTimeMillis() - current) + " : " + getTimeout());
 		//setProgress((int)(System.currentTimeMillis() - current));
 	    }
@@ -330,6 +341,38 @@ public class QTransferGUI extends JFrame {
 	file.setEnabled(t);
 	preferences.setEnabled(t);
 	about.setEnabled(t);
+    }
+
+    public void onTransferRequest(SCC.Data data) {
+	Connection con = SCC.getInstance().openConnection(data.source);
+	int res = JOptionPane.showConfirmDialog(this, 
+						"Transfer requested from: " + data.source + ". Accept?", 
+						"Transfer Request", JOptionPane.YES_NO_OPTION);
+	
+	ByteBuffer buffer = ByteBuffer.allocate(1);
+	try {
+	    if(res == JOptionPane.YES_OPTION) {
+		buffer.put(MessageDispatcher.TRANSFER_ACK);
+
+		//JFileChooser fs = new JFileChooser();
+		//int returnVal = fs.showOpenDialog(this);
+		//if(returnVal == JFileChooser.APPROVE_OPTION) {
+		con.send(buffer.array());
+		dispatcher.setAcceptRequest(false);
+		
+		// start receive dialog
+		ReceiveDialog rec = new ReceiveDialog(this, data.data, data.source);
+		rec.show();
+		   
+		dispatcher.setAcceptRequest(true);
+		//}
+	    } else {
+		buffer.put(MessageDispatcher.TRANSFER_NACK);
+		con.send(buffer.array());
+	    }
+	} catch (DestinationUnreachableException e) {
+	}
+	    
     }
 
     public static void main(String[] args) {

@@ -100,7 +100,7 @@ class Preferences extends JDialog {
 	c.gridx = 1;
 	c.weightx = 1.0;
 
-	spinner2 = new JSpinner(new SpinnerNumberModel(settings.getTimeout(), 10000, 20000, 100));
+	spinner2 = new JSpinner(new SpinnerNumberModel(settings.getTimeout(), 30000, 60000, 100));
 	panel.add(spinner2, c);
 
 	// finalize
