@@ -259,7 +259,7 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 				cont = true;
 			    }
 		    
-			    System.out.println("Request segment: #" + current);
+			    //System.out.println("Request segment: #" + current);
 
 			    buffer = ByteBuffer.allocate(5);
 			    buffer.put(MessageDispatcher.TRANSFER_SEGMENT_REPLY);

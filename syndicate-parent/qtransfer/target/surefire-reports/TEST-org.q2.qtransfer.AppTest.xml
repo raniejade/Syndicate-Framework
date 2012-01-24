@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite failures="0" time="0.021" errors="0" skipped="0" tests="1" name="org.q2.qtransfer.AppTest">
+<testsuite failures="0" time="0.022" errors="0" skipped="0" tests="1" name="org.q2.qtransfer.AppTest">
   <properties>
     <property name="java.runtime.name" value="OpenJDK Runtime Environment"/>
     <property name="sun.boot.library.path" value="/usr/lib/jvm/java-6-openjdk/jre/lib/i386"/>
@@ -19,7 +19,7 @@
     <property name="basedir" value="/home/jade/Development/syndicate/syndicate-parent/qtransfer"/>
     <property name="java.endorsed.dirs" value="/usr/lib/jvm/java-6-openjdk/jre/lib/endorsed"/>
     <property name="os.arch" value="i386"/>
-    <property name="surefire.real.class.path" value="/tmp/surefirebooter5989002767083184746.jar"/>
+    <property name="surefire.real.class.path" value="/tmp/surefirebooter4051061952437924614.jar"/>
     <property name="java.io.tmpdir" value="/tmp"/>
     <property name="line.separator" value="
 "/>
@@ -42,7 +42,7 @@
     <property name="java.vm.specification.version" value="1.0"/>
     <property name="sun.arch.data.model" value="32"/>
     <property name="java.home" value="/usr/lib/jvm/java-6-openjdk/jre"/>
-    <property name="sun.java.command" value="/tmp/surefirebooter5989002767083184746.jar /tmp/surefire4559905490556572124tmp /tmp/surefire1476984166891053392tmp"/>
+    <property name="sun.java.command" value="/tmp/surefirebooter4051061952437924614.jar /tmp/surefire8367069440377378377tmp /tmp/surefire5877009554461807068tmp"/>
     <property name="java.specification.vendor" value="Sun Microsystems Inc."/>
     <property name="user.language" value="en"/>
     <property name="java.vm.info" value="mixed mode"/>
@@ -58,5 +58,5 @@
     <property name="sun.desktop" value="gnome"/>
     <property name="sun.cpu.isalist" value=""/>
   </properties>
-  <testcase time="0.003" classname="org.q2.qtransfer.AppTest" name="testApp"/>
+  <testcase time="0.002" classname="org.q2.qtransfer.AppTest" name="testApp"/>
 </testsuite>

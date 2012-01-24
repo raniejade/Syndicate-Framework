@@ -292,7 +292,7 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 			    
 			    int next = b.getInt();
 
-			     System.out.println("received segment request: #" + next);
+			    //System.out.println("received segment request: #" + next);
 			    
 			    // next segment was requested
 			    if(next > current) {
@@ -302,6 +302,7 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 				if(current >= segmentCount) {
 				    System.out.println("awww");
 				    errorCode = TRANSFER_COMPLETE;
+				    completionTime = System.currentTimeMillis();
 				    break;
 				 }
 
@@ -399,5 +400,23 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
     }
 
     public void showStatistics(boolean complete) {
+	int e = segmentSent - segmentCount;
+	float percentError = ((float)e / segmentCount) * 100;
+	float efficiency = 100.0f - percentError;
+	if(complete) {
+	    long ms = completionTime - startTime;
+	    int minutes = (int)ms / 60000;
+	    int seconds = ((int)ms % 60000) / 1000;
+	    
+	    float speed = (float)(size / 1000) / ((minutes * 60) + seconds);
+	    
+	    String res = String.format("Completion time: %d:%d Efficiency: %.1f%c Speed: %.2f kb/s", minutes, seconds, efficiency, '%' , speed);
+	    
+	    JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
+	} else {
+	    String res = String.format("Efficiency: %.2f", efficiency);
+	    
+	    JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
+	}
     }
 }
