@@ -8,6 +8,9 @@ import java.awt.*;
 import java.awt.event.*;
 import java.beans.*;
 
+import java.io.*;
+import java.util.*;
+
 import org.q2.syndicate.*;
 
 import java.nio.*;
@@ -26,6 +29,7 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
     private final int size;
     private final int segmentCount;
     private Segment[] segments;
+    private int[] csegment;
     private int current;
 
     private final QTransferGUI handle;
@@ -39,137 +43,140 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
     private final Task task;
 
     public TransferDialog(JFrame owner, byte[] data, String name, int size, int segmentCount, Segment[] segments, String destination) {
-	super(owner, true);
-	this.data = data;
-	this.name = name;
-	this.size = size;
-	this.segmentCount = segmentCount;
-	this.segments = segments;
-	this.destination = destination;
-	handle = (QTransferGUI)owner;
-	current = 0;
-	//setUndecorated(true);
-	setTitle("Transfer[Sender]");
-	initGUI();
-	
-	setLocation(owner.getX() + owner.getWidth() / 2 - getWidth() / 2, owner.getY() + owner.getHeight() / 2 - getHeight() / 2) ;
-	setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-	setResizable(false);
+        super(owner, true);
+        this.data = data;
+        this.name = name;
+        this.size = size;
+        this.segmentCount = segmentCount;
+        this.segments = segments;
+        this.destination = destination;
+        this.csegment = new int[segments.length];
+        for(int i = 0; i < segments.length; i++)
+            csegment[i] = 0;
+        handle = (QTransferGUI)owner;
+        current = 0;
+        //setUndecorated(true);
+        setTitle("Transfer[Sender]");
+        initGUI();
+        
+        setLocation(owner.getX() + owner.getWidth() / 2 - getWidth() / 2, owner.getY() + owner.getHeight() / 2 - getHeight() / 2) ;
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setResizable(false);
 
-	task = new Task();
-	task.addPropertyChangeListener(this);
-	task.execute();
+        task = new Task();
+        task.addPropertyChangeListener(this);
+        task.execute();
     }
 
     private void initGUI() {
-	JPanel panel = new JPanel(new BorderLayout());
-	panel.setLayout(new GridBagLayout());
-	panel.setBorder(new EmptyBorder(new Insets(5, 5, 5, 5)));
-	getContentPane().add(BorderLayout.CENTER, panel);
-
-	GridBagConstraints c = new GridBagConstraints();
-
-	progress = new JProgressBar();
-	c.gridwidth = 2;
-	c.insets = new Insets(2, 2, 2, 2);
-	progress.setPreferredSize(new Dimension(250, 20));
-	panel.add(progress, c);
-
-	c.gridwidth = 1;
-	
-	JLabel label = new JLabel("Name");
-	label.setToolTipText("Name of the file");
-	label.setPreferredSize(new Dimension(50, 20));
-	label.setHorizontalAlignment(SwingConstants.LEFT);
-	c.gridy = 1;
-	panel.add(label, c);
-
-	JTextField namefield = new JTextField(name);
-	namefield.setEditable(false);
-	namefield.setToolTipText(name);
-	namefield.setPreferredSize(new Dimension(150, 20));
-	//namefield.setHorizontalAlignment(JTextField.RIGHT);
-	c.gridx = 1;
-	panel.add(namefield, c);
-
-	JLabel label1 = new JLabel("Size");
-	label1.setToolTipText("Size of the file (in megabytes)");
-	label1.setPreferredSize(new Dimension(50, 20));
-	label1.setHorizontalAlignment(SwingConstants.LEFT);
-	c.gridy = 2;
-	c.gridx = 0;
-	panel.add(label1, c);
-
-	float msize = (float)size / 1000000;
-
-	JTextField sizefield = new JTextField(String.format("%.1f MB", msize));
-	sizefield.setPreferredSize(new Dimension(150, 20));
-	sizefield.setHorizontalAlignment(JTextField.RIGHT);
-	sizefield.setEditable(false);
-	c.gridx = 1;
-	panel.add(sizefield, c);
-
-	JLabel label3 = new JLabel("Segments");
-	label3.setToolTipText("Number of segments to be transmitted");
-	label3.setPreferredSize(new Dimension(50, 20));
-	label3.setHorizontalAlignment(SwingConstants.LEFT);
-	c.gridy = 3;
-	c.gridx = 0;
-	panel.add(label3, c);
-
-	JTextField segmentfield = new JTextField(String.valueOf(segmentCount));
-	segmentfield.setPreferredSize(new Dimension(150, 20));
-	segmentfield.setHorizontalAlignment(JTextField.RIGHT);
-	segmentfield.setEditable(false);
-	c.gridx = 1;
-	panel.add(segmentfield, c);
-
-	c.weightx = 1.0;
-
-	JPanel box = new JPanel();
-
-	cancel = new JButton("Cancel");
-	cancel.setPreferredSize(new Dimension(120, 20));
-	c.gridy = 4;
-	c.gridx = 0;
-	c.gridwidth = 2;
-	cancel.addActionListener(this);
-	c.anchor = GridBagConstraints.CENTER;
-	//c.fill = GridBagConstraints.BOTH;
-	//cancel.addActionListener(this);
-	//panel.add(cancel, c);
-	box.add(cancel);
-
-	ok = new JButton("Done");
-	//c.gridx = 1;
-	ok.setPreferredSize(new Dimension(120, 20));
-	ok.addActionListener(this);
-	ok.setEnabled(false);
-	box.add(ok);
-	//panel.add(ok, c);
-
-	panel.add(box, c);
-
-	progress.setStringPainted(true);
-
-	pack();
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setLayout(new GridBagLayout());
+        panel.setBorder(new EmptyBorder(new Insets(5, 5, 5, 5)));
+        getContentPane().add(BorderLayout.CENTER, panel);
+    
+        GridBagConstraints c = new GridBagConstraints();
+    
+        progress = new JProgressBar();
+        c.gridwidth = 2;
+        c.insets = new Insets(2, 2, 2, 2);
+        progress.setPreferredSize(new Dimension(250, 20));
+        panel.add(progress, c);
+    
+        c.gridwidth = 1;
+        
+        JLabel label = new JLabel("Name");
+        label.setToolTipText("Name of the file");
+        label.setPreferredSize(new Dimension(50, 20));
+        label.setHorizontalAlignment(SwingConstants.LEFT);
+        c.gridy = 1;
+        panel.add(label, c);
+    
+        JTextField namefield = new JTextField(name);
+        namefield.setEditable(false);
+        namefield.setToolTipText(name);
+        namefield.setPreferredSize(new Dimension(150, 20));
+        //namefield.setHorizontalAlignment(JTextField.RIGHT);
+        c.gridx = 1;
+        panel.add(namefield, c);
+    
+        JLabel label1 = new JLabel("Size");
+        label1.setToolTipText("Size of the file (in megabytes)");
+        label1.setPreferredSize(new Dimension(50, 20));
+        label1.setHorizontalAlignment(SwingConstants.LEFT);
+        c.gridy = 2;
+        c.gridx = 0;
+        panel.add(label1, c);
+    
+        float msize = (float)size / 1000000;
+    
+        JTextField sizefield = new JTextField(String.format("%.1f MB", msize));
+        sizefield.setPreferredSize(new Dimension(150, 20));
+        sizefield.setHorizontalAlignment(JTextField.RIGHT);
+        sizefield.setEditable(false);
+        c.gridx = 1;
+        panel.add(sizefield, c);
+    
+        JLabel label3 = new JLabel("Segments");
+        label3.setToolTipText("Number of segments to be transmitted");
+        label3.setPreferredSize(new Dimension(50, 20));
+        label3.setHorizontalAlignment(SwingConstants.LEFT);
+        c.gridy = 3;
+        c.gridx = 0;
+        panel.add(label3, c);
+    
+        JTextField segmentfield = new JTextField(String.valueOf(segmentCount));
+        segmentfield.setPreferredSize(new Dimension(150, 20));
+        segmentfield.setHorizontalAlignment(JTextField.RIGHT);
+        segmentfield.setEditable(false);
+        c.gridx = 1;
+        panel.add(segmentfield, c);
+    
+        c.weightx = 1.0;
+    
+        JPanel box = new JPanel();
+    
+        cancel = new JButton("Cancel");
+        cancel.setPreferredSize(new Dimension(120, 20));
+        c.gridy = 4;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        cancel.addActionListener(this);
+        c.anchor = GridBagConstraints.CENTER;
+        //c.fill = GridBagConstraints.BOTH;
+        //cancel.addActionListener(this);
+        //panel.add(cancel, c);
+        box.add(cancel);
+    
+        ok = new JButton("Done");
+        //c.gridx = 1;
+        ok.setPreferredSize(new Dimension(120, 20));
+        ok.addActionListener(this);
+        ok.setEnabled(false);
+        box.add(ok);
+        //panel.add(ok, c);
+    
+        panel.add(box, c);
+    
+        progress.setStringPainted(true);
+    
+        pack();
     }
 
     public void actionPerformed(ActionEvent e) {
-	//System.out.println("called");
-	if(e.getSource() == cancel) {
-	    //System.out.println("wew");
-	    task.cancel(true);
-	    dispose();
-	} else if(e.getSource() == ok) {
-	}
+        //System.out.println("called");
+        if(e.getSource() == cancel) {
+            //System.out.println("wew");
+            task.cancel(true);
+            dispose();
+        } else if(e.getSource() == ok) {
+        }
     }
 
     public void propertyChange(PropertyChangeEvent e) {
-	if("progress".equals(e.getPropertyName())) {
-	    int value = (Integer)e.getNewValue();
-	    progress.setValue(value);
-	}
+        if("progress".equals(e.getPropertyName())) {
+            int value = (Integer)e.getNewValue();
+            progress.setValue(value);
+        }
     }
 
 
@@ -266,6 +273,7 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 			//System.out.println("Sending segment: #" + current);
 			con.send(buffer.array());
 			currentState = TRANSFER_WAIT_REPLY;
+            csegment[current]++;
 			first = true;
 			segmentSent++;
 			continue;
@@ -373,50 +381,68 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
     }
 
     public void onTransferComplete() {
-	JOptionPane.showMessageDialog(this, "Transfer complete. Well done", "Done", JOptionPane.INFORMATION_MESSAGE);
-	showStatistics(true);
-	dispose();
+        JOptionPane.showMessageDialog(this, "Transfer complete. Well done", "Done", JOptionPane.INFORMATION_MESSAGE);
+        showStatistics(true);
+        dispose();
     }
 
     public void onTransferTimeout() {
-	JOptionPane.showMessageDialog(this, "Transfer timeout has been reached, transfer is cancelled", "Timeout Reached", JOptionPane.INFORMATION_MESSAGE);
-	dispose();
+        JOptionPane.showMessageDialog(this, "Transfer timeout has been reached, transfer is cancelled", "Timeout Reached", JOptionPane.INFORMATION_MESSAGE);
+        dispose();
     }
 
     public void onTransferIncomplete() {
-	JOptionPane.showMessageDialog(this, "Transfer incomplete, remote device disappeared", "Transfer Incomplete", JOptionPane.INFORMATION_MESSAGE);
-	showStatistics(false);
-	dispose();
+        JOptionPane.showMessageDialog(this, "Transfer incomplete, remote device disappeared", "Transfer Incomplete", JOptionPane.INFORMATION_MESSAGE);
+        showStatistics(false);
+        dispose();
     }
 
     public void onTransferDeclined() {
-	JOptionPane.showMessageDialog(this, "Transfer declined by remote device", "Transfer Declined", JOptionPane.INFORMATION_MESSAGE);
-	dispose();
+        JOptionPane.showMessageDialog(this, "Transfer declined by remote device", "Transfer Declined", JOptionPane.INFORMATION_MESSAGE);
+        dispose();
     }
 
     public void onTransferNoSuchDevice() {
-	JOptionPane.showMessageDialog(this, "Device not found in the network", "No such device", JOptionPane.INFORMATION_MESSAGE);
-	dispose();
+        JOptionPane.showMessageDialog(this, "Device not found in the network", "No such device", JOptionPane.INFORMATION_MESSAGE);
+        dispose();
     }
 
     public void showStatistics(boolean complete) {
-	int e = segmentSent - segmentCount;
-	float percentError = ((float)e / segmentCount) * 100;
-	float efficiency = 100.0f - percentError;
-	if(complete) {
-	    long ms = completionTime - startTime;
-	    int minutes = (int)ms / 60000;
-	    int seconds = ((int)ms % 60000) / 1000;
-	    
-	    float speed = (float)(size / 1000) / ((minutes * 60) + seconds);
-	    
-	    String res = String.format("Completion time: %d:%d Efficiency: %.1f%c Speed: %.2f kb/s", minutes, seconds, efficiency, '%' , speed);
-	    
-	    JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
-	} else {
-	    String res = String.format("Efficiency: %.2f", efficiency);
-	    
-	    JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
-	}
+        int e = segmentSent - segmentCount;
+        float percentError = ((float)e / segmentCount) * 100;
+        float efficiency = 100.0f - percentError;
+        if(complete) {
+            long ms = completionTime - startTime;
+            int minutes = (int)ms / 60000;
+            int seconds = ((int)ms % 60000) / 1000;
+            
+            float speed = (float)(size / 1000) / ((minutes * 60) + seconds);
+            
+            //String res = String.format("Completion time: %d:%d Efficiency: %.1f%c Speed: %.2f kb/s", minutes, seconds, efficiency, '%' , speed);
+            String res = String.format("Completion time: %d:%d Successful Transmission(s): %d Failed Transimission(s): %d Speed: %.2f kb/s", minutes, seconds, 
+                segmentSent, e, speed);
+            
+            JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
+            dumpInfo();
+        } else {
+            String res = String.format("Efficiency: %.2f", efficiency);
+            
+            JOptionPane.showMessageDialog(this, res, "Results", JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    public void dumpInfo() {
+        try {
+            PrintWriter writer = new PrintWriter("dump.info");
+        
+            for(int i = 0; i < segmentCount; i++) {
+                writer.println("Segment[" + (i+1) + "] Sent: " + csegment[i] + " Failure(s): " + (csegment[i]-1));
+            }   
+            writer.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
