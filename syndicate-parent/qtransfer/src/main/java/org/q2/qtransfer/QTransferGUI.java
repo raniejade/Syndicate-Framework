@@ -172,7 +172,7 @@ public class QTransferGUI extends JFrame {
 	    Scanner reader = new Scanner(new File("qtransfer.config"));
 	    String name = reader.nextLine();
 	    int segmentSize = reader.nextInt();
-	    int timeout = reader.nextInt();
+		int timeout = reader.nextInt();
 	    setName(name);
 	    setSegmentSize(segmentSize);
 	    setTimeout(timeout);
