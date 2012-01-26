@@ -22,34 +22,55 @@ final class ServerThread extends Thread {
         setDaemon(true);
         synCore = SyndicateCore.getInstance();
         stop = false;
-	listener = null;
+	    listener = null;
+        setPriority(Thread.MAX_PRIORITY);
     }
 
     public void run() {
+        Log(TAG, "server thread started");
         try {
             startService();
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage());
         }
 
-        Log(TAG, "server thread started");
 
         while (!stop) {
+            //synCore.getLock().lock();
             try {
-		notifyListener("Listening", "waiting for new connections..");
+                /*Thread t = new Thread(new Runnable() {
+                    public void run() {
+                        long start = System.currentTimeMillis();
+                        while(System.currentTimeMillis() - start <= 4000);
+
+                        stopService();
+                    }
+                });
+                t.setDaemon(true);
+                t.start();*/
+                
+		        notifyListener("Listening", "waiting for new connections..");
                 BtConnection connection = service.acceptAndOpen();
                 Log(TAG, "Waiting....");
-		notifyListener("new connection", "received new connection");
+		        notifyListener("new connection", "received new connection");
                 synCore.getLock().lock();
                 try {
                     synCore.acceptConnection(connection, true);
-		    // synCore.setMaster(true);
+		        // synCore.setMaster(true);
                 } finally {
                     synCore.getLock().unlock();
                 }
             } catch (IOException e) {
                 Log(TAG, "service closed");
-            }
+            } /*finally {
+                synCore.getLock().unlock();
+            }*/
+
+            /*try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }*/
         }
 
         stopService();

@@ -11,10 +11,13 @@ import javax.bluetooth.BluetoothStateException;
 import javax.bluetooth.LocalDevice;
 import javax.bluetooth.UUID;
 import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
+
+import javax.bluetooth.DiscoveryAgent;
 
 import static org.q2.syndicate.SyndicateProperties.*;
 import static org.q2.util.DebugLog.Log;
@@ -37,6 +40,8 @@ final class SyndicateCore {
     public static SyndicateCore getInstance() {
         return ourInstance;
     }
+
+    private final long startTime;
 
     // indicates whether Syndicate will use L2CAP as its main communication protocol
     private boolean useL2CAP;
@@ -68,13 +73,15 @@ final class SyndicateCore {
     private StateListener listener;
 
     private volatile boolean networkChanged;
+    private PrintWriter writer;
 
     private SyndicateCore() throws BluetoothStateException {
         // initialize properties
         initProperties();
         Log("SynCore", "properties initialized");
-        SYNDICATE_UUID = new UUID("04A6C7B", false);
+        SYNDICATE_UUID = new UUID("123456789ABCDEF12934ABC4DE527F29", false);
         localDevice = LocalDevice.getLocalDevice();
+        localDevice.setDiscoverable(DiscoveryAgent.GIAC);
         Log("SynCore", "local device initialized");
 
         mutex = new ReentrantReadWriteLock();
@@ -84,12 +91,30 @@ final class SyndicateCore {
         lock = new ReentrantLock();
         master = false;
         in = new ConcurrentLinkedQueue<Packet>();
-	history = new ConcurrentHashMap<String, String>();
-	sent = new ConcurrentHashMap<String, String>();
-	listener = null;
-	networkChanged = false;
+	    history = new ConcurrentHashMap<String, String>();
+    	sent = new ConcurrentHashMap<String, String>();
+	    listener = null;
+    	networkChanged = false;
 
-	routes = new org.q2.rip.RoutingTable();
+        Log("SynCore", "bluetooth.connected.inquiry.scan: " + localDevice.getProperty("bluetooth.connected.inquiry.scan"));
+        Log("SynCore", "bluetooth.connected.page.scan: " + localDevice.getProperty("bluetooth.connected.page.scan"));
+        Log("SynCore", "bluetooth.connected.inquiry: " + localDevice.getProperty("bluetooth.connected.inquiry"));
+        Log("SynCore", "bluetooth.connected.page: " + localDevice.getProperty("bluetooth.connected.page"));
+
+        try {
+            writer = new PrintWriter(localDevice.getBluetoothAddress() + ".txt");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        startTime = System.currentTimeMillis();
+
+    	routes = new org.q2.rip.RoutingTable();
+    }
+
+    public void record(int size) {
+        long time = System.currentTimeMillis() - startTime;
+        writer.println(time + " " + size);
     }
 
     public synchronized void setMaster(boolean t) {
@@ -103,6 +128,17 @@ final class SyndicateCore {
     private void runCoreThreads() {
         serverThread.start();
         clientThread.start();
+    }
+
+    public void requireUpdate() {
+        mutex.writeLock().lock();
+        try {
+            for(String h : connections.keySet()) {
+                connections.get(h).setRequireUpdate(true);
+            }
+        } finally {
+            mutex.writeLock().unlock();
+        }
     }
 
     private void addShutdownHook() {
@@ -154,11 +190,14 @@ final class SyndicateCore {
         try {
             if (!hasConnection(connection.getRemoteDevice().getBluetoothAddress()) && connections.size() < 2) {
                 ConnectionHandler handler = new ConnectionHandler(connection);
+                //requireUpdate();
                 connections.put(handler.getBtAddress(), handler);
-		notifyListener("acceptConnection", "connection accepted. Starting handler...");
+                //requireUpdate();
+	        	notifyListener("acceptConnection", "connection accepted. Starting handler...");
                 handler.start();
                 //routingTable.add(localDevice.getBluetoothAddress(), handler.getBtAddress());
-		routes.updateEntry(new RoutingTableEntry(handler.getBtAddress(), 1, handler.getBtAddress()));
+		        routes.updateEntry(new RoutingTableEntry(handler.getBtAddress(), 1, handler.getBtAddress()));
+                localDevice.setDiscoverable(DiscoveryAgent.GIAC);
             } else {
 		notifyListener("acceptConnection", "connection rejected.. reasons: link count exceeded or already visible to this network");
                 connection.close();
@@ -253,6 +292,7 @@ final class SyndicateCore {
             }
 
             connections.clear();
+            writer.close();
         }
     }
 
@@ -274,6 +314,7 @@ final class SyndicateCore {
 
     public void handlePacket(byte[] p, String from) {
         Packet s = Packet.createPacket(p);
+        if(s == null) return;
 	notifyListener("handlePacket", "packet received from: " + from);
         s.decreaseHopCount();
         if (s.getHopCount() > 0) {
@@ -296,14 +337,16 @@ final class SyndicateCore {
 	    int limit = buffer.getInt();
 	    int i = 0;
 	    byte[] tmp = new byte[12];
+        //routes.removeEntries(from);
 	    while(i < limit) {
-		// destination
-		buffer.get(tmp);
-		String destination = new String(tmp);
-		int hops = buffer.getInt();
-		routes.updateEntry(new RoutingTableEntry(destination, hops, from));
-		i++;
+	    	// destination
+	    	buffer.get(tmp);
+		    String destination = new String(tmp);
+		    int hops = buffer.getInt();
+		    routes.updateEntry(new RoutingTableEntry(destination, hops, from));
+		    i++;
 	    }
+        //requireUpdate();
 	} finally {
 	    mutex.writeLock().unlock();
 	}

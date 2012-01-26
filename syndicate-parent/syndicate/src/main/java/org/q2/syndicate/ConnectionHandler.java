@@ -20,6 +20,8 @@ final class ConnectionHandler extends Thread {
 
     private StateListener listener;
 
+    private volatile boolean requireUpdate;
+
     public ConnectionHandler(BtConnection connection) throws IOException {
         device = connection.getRemoteDevice();
         this.connection = connection;
@@ -28,7 +30,12 @@ final class ConnectionHandler extends Thread {
         setName(tag);
         synCore = SyndicateCore.getInstance();
         queue = new ConcurrentLinkedQueue<Packet>();
-	listener = null;
+    	listener = null;
+        requireUpdate = true;
+    }
+
+    public synchronized void setRequireUpdate(boolean t) {
+        requireUpdate = t;
     }
 
     public synchronized void offer(Packet p) {
@@ -40,10 +47,10 @@ final class ConnectionHandler extends Thread {
         long sendUpdate = 0;
         while (!stop) {
             boolean connected = true;
-            synCore.getLock().lock();
+            /*synCore.getLock().lock();
             try {
                 device.getFriendlyName(true);
-		notifyListener("verify", "contacting remote device");
+		        notifyListener("verify", "contacting remote device");
             } catch (IOException e) {
                 Log(tag, e.getMessage());
                 synCore.removeConnection(device.getBluetoothAddress());
@@ -54,12 +61,12 @@ final class ConnectionHandler extends Thread {
                 connected = false;
             } finally {
                 synCore.getLock().unlock();
-            }
+            }*/
 
             if (connected) {
 
-                if (System.currentTimeMillis() - sendUpdate > 6000) {
-		    notifyListener("send update","sending update packet");
+                if (System.currentTimeMillis() - sendUpdate > 11000) {
+		            notifyListener("send update","sending update packet");
                     synCore.getLock().lock();
                     try {
                         sendUpdatePacket();
@@ -73,12 +80,24 @@ final class ConnectionHandler extends Thread {
 
 
                 }
+                /*if(requireUpdate) {
+                    synCore.getLock().lock();
+                    try {
+                        sendUpdatePacket();
+                        requireUpdate = false;
+                    } catch (IOException e) {
+                        Log(tag, e.getMessage());
+                        synCore.removeConnection(device.getBluetoothAddress());
+                    }
+                }*/
                 synCore.getLock().lock();
                 try {
                     byte[] rec = connection.receive();
-		    notifyListener("receiving data", "attempting to receive data");
+		            notifyListener("receiving data", "attempting to receive data");
+                    //Log(tag, "attempting to receive data");
                     if (rec != null) {
-			notifyListener("data received", "calling synCore.handlePacket");
+                        Log(tag, "data received");
+			            notifyListener("data received", "calling synCore.handlePacket");
                         synCore.handlePacket(rec, device.getBluetoothAddress());
                     }
                 } catch (IOException e) {
@@ -93,8 +112,10 @@ final class ConnectionHandler extends Thread {
                     if (!queue.isEmpty()) {
                         Packet p = queue.poll();
 			//System.out.println("DAMN 2: " + p.getPayload().length);
-			notifyListener("sending data", "destination: " + p.getDestination() + " from: " + p.getSource());
+			            notifyListener("sending data", "destination: " + p.getDestination() + " from: " + p.getSource());
+                        Log(tag, "destination: " + p.getDestination() + " from: " + p.getSource());
                         connection.send(p.toBytes());
+                        synCore.record(p.getPayload().length);
                     }
                 } catch (IOException e) {
                     synCore.removeConnection(device.getBluetoothAddress());
@@ -106,6 +127,7 @@ final class ConnectionHandler extends Thread {
         }
 
         try {
+            synCore.removeConnection(device.getBluetoothAddress());
             connection.close();
         } catch (IOException e) {
             e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
@@ -124,6 +146,7 @@ final class ConnectionHandler extends Thread {
     public void sendUpdatePacket() throws IOException {
         Packet p = synCore.requestUpdatePacket(getBtAddress());
         connection.send(p.toBytes());
+        synCore.record(p.getPayload().length);
         Log(tag, "Update packet sent");
     }
 

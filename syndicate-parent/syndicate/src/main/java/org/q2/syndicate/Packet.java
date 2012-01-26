@@ -15,8 +15,10 @@ final class Packet {
     private int payloadSize;
 
     public static Packet createPacket(byte[] data) {
-
-	//System.out.println("createPacket: " + data.length);
+        //System.out.println("data size: " + data.length);
+        //if(data.length <= 1)
+            //return null;
+	    //System.out.println("createPacket: " + data.length);
         ByteBuffer buffer = ByteBuffer.wrap(data);
 
         Byte type = buffer.get();

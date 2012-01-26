@@ -202,38 +202,119 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 	    SCC scc = SCC.getInstance();
 	    Connection con = scc.openConnection(destination);
 	    boolean first = true;
+        errorCode = TRANSFER_COMPLETE;
 	    
 	    long time = 0;
 	    int dataSent = 0;
-	    
+        while(current < segmentCount) {
+            if(currentState == SEND_REQUEST) {
+                try {
+                    con.send(data);
+                    first = true;
+                    progress.setIndeterminate(true);
+                    currentState = WAIT_REPLY;
+                } catch (DestinationUnreachableException e) {
+                    errorCode = NO_SUCH_DEVICE;
+                    break;
+                }
+            } else if(currentState == WAIT_REPLY) {
+                if(first) {
+                    first = false;
+                    time = System.currentTimeMillis();
+                }
+
+                SCC.Data rec = scc.receive();
+
+                if(rec != null) {
+                    if(rec.data[0] == MessageDispatcher.TRANSFER_ACK) {
+                        first = true;
+                        //time = System.currentTimeMillis();
+                        currentState = TRANSFER;
+                        progress.setIndeterminate(false);
+                        startTime = System.currentTimeMillis();
+                    } else if(rec.data[0] == MessageDispatcher.TRANSFER_NACK) {
+                        errorCode = TRANSFER_DECLINED;
+                        break;
+                    }
+                }
+
+                /*if(System.currentTimeMillis() - time >= handle.getTimeout()) {
+                    errorCode = TIMEOUT_REACHED;
+                    break;
+                }*/
+            } else if(currentState == TRANSFER) {
+                if(first) {
+                    first = false;
+                    time = System.currentTimeMillis();
+                }
+
+                SCC.Data rec = scc.receive();
+                if(rec != null) {
+                    if(rec.data[0] == MessageDispatcher.TRANSFER_SEGMENT_REPLY) {
+                        ByteBuffer buffer = ByteBuffer.wrap(rec.data);
+                        // type
+                        buffer.get();
+
+                        current = buffer.getInt();
+                        if(current == segmentCount)
+                            break;
+                        
+                        Segment c = segments[current];
+
+                        ByteBuffer buff = ByteBuffer.allocate(9 + c.size);
+                        buff.put(MessageDispatcher.TRANSFER_SEGMENT);
+                        buff.putInt(c.size);
+                        buff.putInt(current);
+                        buff.put(c.data);
+
+                        try {
+                            con.send(buff.array());
+                            segmentSent++;
+                            csegment[current]++;
+                            float progress = ((float)current / segmentCount) * 100;
+                            setProgress((int)progress);
+                            first = true;
+                            continue;
+                            
+                        } catch (DestinationUnreachableException e) {
+                        }
+                    }
+                }
+
+                /*if(System.currentTimeMillis() - time >= handle.getTimeout()) {
+                    errorCode = TRANSFER_INCOMPLETE;
+                    break;
+                }*/
+            }
+        }
+	    /*
 	    while(current < segmentCount) {
-		if(currentState == SEND_REQUEST) {
-		    try {
-			con.send(data);
-			currentState = WAIT_REPLY;
-			first = true;
-			//progress.setString("Waiting for reply");
-			System.out.println("Request sent.. waiting for reply");
-			progress.setIndeterminate(true);
-		    } catch (DestinationUnreachableException e) {
-			//setProgress(100);
-			errorCode = NO_SUCH_DEVICE;
-			break;
-		    }
-		} else if(currentState == WAIT_REPLY) {
-		    if(first) {
-			first = false;
-			time = System.currentTimeMillis();
-		    }
+		    if(currentState == SEND_REQUEST) {
+		        try {
+			    con.send(data);
+			    currentState = WAIT_REPLY;
+		    	first = true;
+		    	//progress.setString("Waiting for reply");
+		    	System.out.println("Request sent.. waiting for reply");
+		    	progress.setIndeterminate(true);
+		       } catch (DestinationUnreachableException e) {
+		    	//setProgress(100);
+		    	errorCode = NO_SUCH_DEVICE;
+		    	break;
+		       }
+	    	} else if(currentState == WAIT_REPLY) {
+		        if(first) {
+		    	first = false;
+		      	time = System.currentTimeMillis();
+		      }
 		    
-		    SCC.Data rec = scc.receive();
+		      SCC.Data rec = scc.receive();
 		    
-		    if(rec != null) {
-			
-			if(rec.data[0] == MessageDispatcher.TRANSFER_ACK) {
-			    first = true;
-			    currentState = TRANSFER;
-			    startTime = System.currentTimeMillis();
+		       if(rec != null) {
+		        if(rec.data[0] == MessageDispatcher.TRANSFER_ACK) {
+			          first = true;
+			          currentState = TRANSFER;
+			          startTime = System.currentTimeMillis();
 			    System.out.println("Transfer Acknowledge");
 			    continue;
 			} else if(rec.data[0] == MessageDispatcher.TRANSFER_NACK) {
@@ -255,13 +336,13 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 			progress.setIndeterminate(false);
 		    }
 		    
-		    /*if(current == segmentCount) {
+		    if(current == segmentCount) {
 			//setProgress(100);
 			errorCode = TRANSFER_COMPLETE;
 			//System.out.println("Sent-> segment #: " + (current + 1));
 			completionTime = System.currentTimeMillis();
 			break;
-			}*/
+			}
 		    
 		    try {
 			Segment c = segments[current];
@@ -328,6 +409,9 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 				//first = true;
 				//continue;
 			    //}
+                else {
+                    //current = next;
+                }
 			    currentState = TRANSFER;
 			    first = true;
 			    continue;
@@ -336,12 +420,17 @@ class TransferDialog extends JDialog implements PropertyChangeListener, ActionLi
 		    
 		    if(System.currentTimeMillis() - time >= handle.getTimeout()) {
 			//setProgress(100);
-			errorCode = TRANSFER_INCOMPLETE;
-			break;
+			//errorCode = TRANSFER_INCOMPLETE;
+			//break;
+                currentState = TRANSFER;
+                first = true;
+                continue;
 		    }
 		}
-	    }
-	    setProgress(100);
+	    }*/
+	    //setProgress(100);
+        completionTime = System.currentTimeMillis();
+        setProgress(100);
 	    return null;
 	}
 	

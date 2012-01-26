@@ -307,7 +307,7 @@ public class QTransferGUI extends JFrame {
     private class WaitingThread extends SwingWorker<Void, Void> {
 	public Void doInBackground() {
 	    long current = System.currentTimeMillis();
-	    while(System.currentTimeMillis() - current < 10000) {
+	    while(System.currentTimeMillis() - current < getTimeout()) {
 		//System.out.println((System.currentTimeMillis() - current) + " : " + getTimeout());
 		//setProgress((int)(System.currentTimeMillis() - current));
 	    }

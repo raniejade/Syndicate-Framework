@@ -7,6 +7,8 @@ import org.q2.util.StateListener;
 import javax.bluetooth.*;
 import java.io.IOException;
 
+import java.util.Vector;
+
 import static org.q2.util.DebugLog.Log;
 
 final class ClientThread extends Thread implements DiscoveryListener {
@@ -27,6 +29,8 @@ final class ClientThread extends Thread implements DiscoveryListener {
 
     private StateListener listener;
 
+    private final Vector<RemoteDevice> founds;
+
     public ClientThread() {
         super(TAG);
         synCore = SyndicateCore.getInstance();
@@ -36,19 +40,25 @@ final class ClientThread extends Thread implements DiscoveryListener {
         uuids = new UUID[1];
         uuids[0] = synCore.SYNDICATE_UUID;
         setDaemon(true);
-	listener = null;
+	    listener = null;
+        founds = new Vector<RemoteDevice>();
     }
 
     @Override
     public void deviceDiscovered(RemoteDevice remoteDevice, DeviceClass deviceClass) {
+        Log(TAG, "found device: " + remoteDevice.getBluetoothAddress());
         if (!synCore.hasConnection(remoteDevice.getBluetoothAddress())) {
             found = remoteDevice;
+            //founds.add(remoteDevice);
             agent.cancelInquiry(this);
+        } else {
+            Log(TAG, "already connected to device...");
         }
     }
 
     @Override
     public void servicesDiscovered(int i, ServiceRecord[] serviceRecords) {
+        Log(TAG, "Syndicate service found");
         if (serviceRecords.length > 0 && transactionID == i) {
             serviceRecord = serviceRecords[0];
             agent.cancelServiceSearch(transactionID);
@@ -56,7 +66,24 @@ final class ClientThread extends Thread implements DiscoveryListener {
     }
 
     @Override
-    public void serviceSearchCompleted(int i, int i1) {
+    public void serviceSearchCompleted(int i, int respCode) {
+        switch(respCode) {
+            case DiscoveryListener.SERVICE_SEARCH_COMPLETED:
+                Log(TAG, "Service search complete");
+            break;
+            case DiscoveryListener.SERVICE_SEARCH_TERMINATED:
+                Log(TAG, "Service search terminated");
+            break;
+            case DiscoveryListener.SERVICE_SEARCH_ERROR:
+                Log(TAG, "Service search error");
+            break;
+            case DiscoveryListener.SERVICE_SEARCH_NO_RECORDS:
+                Log(TAG, "No records where found");
+            break;
+            case DiscoveryListener.SERVICE_SEARCH_DEVICE_NOT_REACHABLE:
+                Log(TAG, "Remote device not reachable");
+            break;
+        }
         synchronized (monitor) {
             monitor.notify();
         }
@@ -72,10 +99,14 @@ final class ClientThread extends Thread implements DiscoveryListener {
     public void run() {
         Log(TAG, "client thread started");
         while (!stop) {
+            // temp though shall not touch
+            //synCore.getLock().lock();
             try {
                 found = null;
+                founds.clear();
                 agent.startInquiry(DiscoveryAgent.GIAC, this);
-		notifyListener("inquiry", "inquiry started");
+                Log(TAG, "inquiry started");
+		        notifyListener("inquiry", "inquiry started");
                 // wait until
                 synchronized (monitor) {
                     try {
@@ -85,13 +116,15 @@ final class ClientThread extends Thread implements DiscoveryListener {
                     }
                 }
 
-		notifyListener("inquiry", "inquiry done");
+		        notifyListener("inquiry", "inquiry done");
+                Log(TAG, "inquiry done");
 
                 // found a device
-                if (found != null) {
-		    notifyListener("inquiry", "found device: " + found.getBluetoothAddress());
+                if (found != null) /*for(RemoteDevice f : founds)*/ {
+		            notifyListener("inquiry", "found device: " + found.getBluetoothAddress());
                     serviceRecord = null;
-		    notifyListener("service search", "searching Syndicate service on: " + found.getBluetoothAddress());
+		            notifyListener("service search", "searching Syndicate service on: " + found.getBluetoothAddress());
+                    Log(TAG, "service search started");
                     transactionID = agent.searchServices(null, uuids, found, this);
 
                     synchronized (monitor) {
@@ -102,34 +135,43 @@ final class ClientThread extends Thread implements DiscoveryListener {
                         }
                     }
 
-		    notifyListener("service search", "searching Syndicate service done");
+		            notifyListener("service search", "searching Syndicate service done");
 
                     if (serviceRecord != null) {
                         String connectionURL = serviceRecord.getConnectionURL(ServiceRecord.NOAUTHENTICATE_NOENCRYPT, false);
-			notifyListener("service search", "Syndicate service found: " + connectionURL);
+			            notifyListener("service search", "Syndicate service found: " + connectionURL);
+                        Log(TAG, "connecting to: " + connectionURL);
                         if (synCore.getLock().tryLock()) {
+                            //synCore.getLock().lock();
                             try {
-				notifyListener("establish connection", "attempting to establish connection..");
+				                notifyListener("establish connection", "attempting to establish connection..");
                                 BtConnection connection = synCore.openConnection(connectionURL);
                                 Log(TAG, "Waiting....");
-				notifyListener("establish connection", "calling synCore.acceptConnection");
+			                	notifyListener("establish connection", "calling synCore.acceptConnection");
                                 synCore.acceptConnection(connection, false);
                                 Log(TAG, "new connection - " + connection.getRemoteDevice().getBluetoothAddress());
                             } catch (IOException e) {
-				notifyListener("establish connection", "connection failed...");
+			                	notifyListener("establish connection", "connection failed...");
                                 Log(TAG, e.getMessage());
                             } finally {
                                 synCore.getLock().unlock();
                             }
-                        }
+                        } /* else {
+                            Log(TAG, "Can't establish connection now");
+                        }*/
+                    } else {
+                        Log(TAG, "Syndicate service not found");
                     }
                 }
             } catch (BluetoothStateException e) {
                 Log(TAG, "failed to start device inquiry - " + e.getMessage());
-		notifyListener("inquiry", "failed to start inquiry.. " + e.getMessage());
-            }
+		        notifyListener("inquiry", "failed to start inquiry.. " + e.getMessage());
+            }/* finally {
+                synCore.getLock().unlock();
+            } */
             try {
-                Thread.sleep(1000);
+                java.util.Random rand = new java.util.Random();
+                Thread.sleep(rand.nextInt(5000) + 4000);
             } catch (InterruptedException e) {
 
             }

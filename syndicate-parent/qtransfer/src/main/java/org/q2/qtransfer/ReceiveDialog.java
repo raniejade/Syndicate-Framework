@@ -186,15 +186,18 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 	}
     }
 
-    private volatile int errorCode = -1;
+    //private volatile int errorCode = TRANSFER_COMPLETE;
 
     private final int TIMEOUT_REACHED = 0x0;
-    private final int SAVE_FILE_CANCELED = 0x1;
+    private final int SAVE_FILE_CANCELLED = 0x1;
     private final int TRANSFER_COMPLETE = 0x2;
+
+    private volatile int errorCode = TRANSFER_COMPLETE;
 
     private class Task extends SwingWorker<Void, Void> {
 	private final int SAVE_FILE_LOCATION = 0x0;
 	private final int RECEIVE_SEGMENT = 0x1;
+    private final int REQUEST_SEGMENT = 0x2;
 	public Void doInBackground() {
 	    SCC scc = SCC.getInstance();
 	    Connection con = scc.openConnection(sender);
@@ -204,6 +207,80 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 
 	    long time = 0;
 
+        int timeoutCount = 0;
+        JFileChooser fs = new JFileChooser();
+        fs.setSelectedFile(new File(name));
+        int returnVal = fs.showSaveDialog(ReceiveDialog.this);
+
+        if(returnVal == JFileChooser.APPROVE_OPTION) {
+            file = fs.getSelectedFile();
+            currentState = REQUEST_SEGMENT;
+
+            while(current < segmentCount) {
+                if(currentState == REQUEST_SEGMENT) {
+                    if(first) {
+                        time = System.currentTimeMillis();
+                        first = false;
+                    }
+
+                    ByteBuffer buffer = ByteBuffer.allocate(5);
+                    buffer.put(MessageDispatcher.TRANSFER_SEGMENT_REPLY);
+                    buffer.putInt(current);
+
+                    try {
+                        con.send(buffer.array());
+                        currentState = RECEIVE_SEGMENT;
+                        first = true;
+                    } catch (DestinationUnreachableException e) {
+                    }
+
+                    float progress = ((float)current / segmentCount) * 100;
+                    setProgress((int) progress);
+
+                    /*if(System.currentTimeMillis() - time >= handle.getTimeout()) {
+                        errorCode = TIMEOUT_REACHED;
+                        break;
+                    }*/
+                } else if(currentState == RECEIVE_SEGMENT) {
+                    if(first) {
+                        first = false;
+                        time = System.currentTimeMillis();
+                    }
+                    if(!scc.getConnections().contains(sender)) {
+                        first = true;
+                        currentState = REQUEST_SEGMENT;
+                    }
+                    SCC.Data rec = scc.receive();
+                    if(rec != null) {
+                        if(rec.data[0] == MessageDispatcher.TRANSFER_SEGMENT) {
+                            ByteBuffer buffer = ByteBuffer.wrap(rec.data);
+                            // type
+                            buffer.get();
+                            int recSize = buffer.getInt();
+                            int seg = buffer.getInt();
+                            byte[] tmp = new byte[rec.data.length - 9];
+                            buffer.get(tmp);
+
+                            if(seg == current) {
+                                segments[current] = new Segment(tmp);
+                                current++;
+                                currentState = REQUEST_SEGMENT;
+                                first = true;
+                                continue;
+                            }
+                        }
+                    }
+
+                    if(System.currentTimeMillis() - time >= handle.getTimeout()) {
+                        first = true;
+                        currentState = REQUEST_SEGMENT;
+                    }
+                }
+            }
+        } else {
+            errorCode = SAVE_FILE_CANCELLED;
+        }
+        /*
 	    while(current < segmentCount) {
 		if(currentState == SAVE_FILE_LOCATION) {
 		    JFileChooser fs = new JFileChooser();
@@ -222,6 +299,7 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 		    if(first) {
 			first = false;
 			time = System.currentTimeMillis();
+            timeoutCount = 0;
 		    }
 
 		    //if(current == segmentCount - 1) {
@@ -279,6 +357,8 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 			    if(cont)
 				continue;
 			    } catch (DestinationUnreachableException e) {
+                    first = true;
+                    continue;
 			    }
 
 
@@ -287,11 +367,30 @@ class ReceiveDialog extends JDialog implements ActionListener, PropertyChangeLis
 
 		    if(System.currentTimeMillis() - time >= handle.getTimeout()) {
 			//setProgress(100);
-			errorCode = TIMEOUT_REACHED;
-			break;
-		    }
+            timeoutCount++;
+            if(timeoutCount == 3) {
+			    errorCode = TIMEOUT_REACHED;
+		    	break;
+            }
+		    } //else {
+                //ByteBuffer buffer = ByteBuffer.allocate(5);
+			    //buffer.put(MessageDispatcher.TRANSFER_SEGMENT_REPLY);
+			    //buffer.putInt(current);
+                //try {
+                  //  con.send(buffer.array());
+                //} catch (DestinationUnreachableException e) {
+                //}
+
+           //}
 		}
-	    }
+	    }*/
+        ByteBuffer buffer = ByteBuffer.allocate(5);
+        buffer.put(MessageDispatcher.TRANSFER_SEGMENT_REPLY);
+        buffer.putInt(current);
+        try {
+            con.send(buffer.array());
+        } catch (DestinationUnreachableException e) {
+        }
 	    setProgress(100);
 	    return null;
 	}
